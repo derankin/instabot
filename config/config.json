@@ -1,1 +1,115 @@
-Copy the config from ../dist/config.json, and put your own parameters
+{
+  "blacklist": null,
+  "comments": [
+    "🏁",
+    "🏁🏁🏁",
+    "🔥"
+  ],
+  "limits": {
+    "comment": {
+      "max": 10000,
+      "min": 100
+    },
+    "follow": {
+      "max": 10000,
+      "min": 200
+    },
+    "like": {
+      "max": 10000,
+      "min": 0
+    },
+    "maxretry": 2
+  },
+  "tags": {
+    "Bucks": {
+      "Comment": 0,
+      "Like": 20,
+      "Follow": 0
+    },
+    "Colorado": {
+      "Comment": 0,
+      "Like": 20,
+      "Follow": 0
+    },
+    "Kentucky": {
+      "Comment": 0,
+      "Like": 20,
+      "Follow": 0
+    },
+    "LISASOLO": {
+      "Comment": 0,
+      "Like": 20,
+      "Follow": 0
+    },
+    "LukeLetlow": {
+      "Comment": 0,
+      "Like": 20,
+      "Follow": 0
+    },
+    "Miami": {
+      "Comment": 0,
+      "Like": 20,
+      "Follow": 0
+    },
+    "MitchMcConnell": {
+      "Comment": 0,
+      "Like": 20,
+      "Follow": 0
+    },
+    "Pacers": {
+      "Comment": 0,
+      "Like": 20,
+      "Follow": 0
+    },
+    "Perry": {
+      "Comment": 0,
+      "Like": 20,
+      "Follow": 0
+    },
+    "Pope": {
+      "Comment": 0,
+      "Like": 20,
+      "Follow": 0
+    },
+    "Quackity": {
+      "Comment": 0,
+      "Like": 20,
+      "Follow": 0
+    },
+    "Raptors": {
+      "Comment": 0,
+      "Like": 20,
+      "Follow": 0
+    },
+    "Sixers": {
+      "Comment": 0,
+      "Like": 20,
+      "Follow": 0
+    },
+    "TamirRice": {
+      "Comment": 0,
+      "Like": 20,
+      "Follow": 0
+    },
+    "TheHeat": {
+      "Comment": 0,
+      "Like": 20,
+      "Follow": 0
+    },
+    "Wizards": {
+      "Comment": 0,
+      "Like": 20,
+      "Follow": 0
+    },
+    "addison": {
+      "Comment": 0,
+      "Like": 20,
+      "Follow": 0
+    }
+  },
+  "user": {
+      "password": ";([Ke9*kB*U1Y^e?b*976O||t,hm2n",
+      "username": "mavericksoftwaregroup"
+    },
+  "whitelist": null
+}

@@ -1,18 +1,20 @@
-package main
+package instabot
 
 import (
+	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
-	"log"
-	"net/smtp"
+	"github.com/ahmdrz/goinsta/v2"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"gopkg.in/natefinch/lumberjack.v2"
 	"os"
 	"strings"
 	"time"
-
-	"github.com/spf13/viper"
 )
 
+/*
 var (
 	// Whether we are in development mode or not
 	dev bool
@@ -33,28 +35,28 @@ var (
 	noduplicate bool
 )
 
-// An image will be liked if the poster has more followers than likeLowerLimit, and less than likeUpperLimit
-var likeLowerLimit int
-var likeUpperLimit int
+// An image will be liked if the poster has more followers than likeMin, and less than likeMax
+var likeMin int
+var likeMax int
 
-// A user will be followed if he has more followers than followLowerLimit, and less than followUpperLimit
+// A user will be followed if he has more followers than followMin, and less than followMax
 // Needs to be a subset of the like interval
-var followLowerLimit int
-var followUpperLimit int
+var followMin int
+var followMax int
 
-// An image will be commented if the poster has more followers than commentLowerLimit, and less than commentUpperLimit
+// An image will be commented if the poster has more followers than commentMin, and less than commentMax
 // Needs to be a subset of the like interval
-var commentLowerLimit int
-var commentUpperLimit int
+var commentMin int
+var commentMax int
 
 // Hashtags list. Do not put the '#' in the config file
-var tagsList map[string]interface{}
+var tags map[string]interface{}
 
 // Limits for the current hashtag
 var limits map[string]int
 
 // Comments list
-var commentsList []string
+var comments []string
 
 // Line is a struct to store one line of the report
 type line struct {
@@ -75,40 +77,150 @@ var numCommented int
 // Will hold the tag value
 var tag string
 
+*/
+var logger *zap.Logger
+var slogger *zap.SugaredLogger
+
 // check will log.Fatal if err is an error
 func check(err error) {
 	if err != nil {
-		log.Fatal("ERROR:", err)
+		slogger.Errorw("an error has occurred ", "errors", err)
 	}
 }
 
+type Flags struct {
+	Run, Unfollow, Nomail, Dev, Nodups bool
+}
+type Tag struct {
+	Comment int
+	Like    int
+	Follow  int
+}
+
+type Config struct {
+	Tags     map[string]Tag `json:"tags"`
+	Comments []string       `json:"comments"`
+	User     struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	} `json:"user"`
+	Limits struct {
+		MaxRetry int `json:"maxretry"`
+		Comment  struct {
+			Max int `json:"max"`
+			Min int `json:"min"`
+		} `json:"comment"`
+		Follow struct {
+			Max int `json:"max"`
+			Min int `json:"min"`
+		} `json:"follow"`
+		Like struct {
+			Max int `json:"max"`
+			Min int `json:"min"`
+		} `json:"like"'`
+	} `json:"limits"`
+	Blacklist []string `json:"blacklist"`
+	Whitelist []string `json:"whitelist"`
+}
+
+func LoadConfiguration(file string) Config {
+	var config Config
+	if file == "" {
+		file = "config/config.json"
+	}
+
+	configFile, err := os.Open(file)
+	defer configFile.Close()
+	if err != nil {
+		slogger.Errorf("Could not load configuration file. %s", err)
+	}
+	jsonParser := json.NewDecoder(configFile)
+	jsonParser.Decode(&config)
+	slogger.Infof("config: running as [%s]", config.User.Username)
+	slogger.Infof("config: max retry [%d]", config.Limits.MaxRetry)
+	return config
+}
+
+func InitLogger() {
+	writerSyncer := getLogWriter()
+	encoder := getEncoder()
+	core := zapcore.NewCore(encoder, writerSyncer, zapcore.DebugLevel)
+	//logger = zap.New(core, zap.AddCaller())
+	logger = zap.New(core)
+	slogger = logger.Sugar()
+}
+
+func getLogWriter() zapcore.WriteSyncer {
+	lumberjackLogger := &lumberjack.Logger{
+		Filename:   "./instabot.log",
+		MaxSize:    10,
+		MaxBackups: 5,
+		MaxAge:     30,
+		Compress:   false,
+	}
+	writeSyncers := zapcore.NewMultiWriteSyncer(zapcore.AddSync(os.Stdout), zapcore.AddSync(lumberjackLogger))
+	return writeSyncers
+}
+
+func getEncoder() zapcore.Encoder {
+	encoderConfig := zap.NewProductionEncoderConfig()
+	encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	encoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder
+	return zapcore.NewConsoleEncoder(encoderConfig)
+}
+
 // Parses the options given to the script
-func parseOptions() {
+func ParseFlags() Flags {
+	var (
+		dev         bool
+		nomail      bool
+		unfollow    bool
+		run         bool
+		noduplicate bool
+	)
 	flag.BoolVar(&run, "run", false, "Use this option to follow, like and comment")
 	flag.BoolVar(&unfollow, "sync", false, "Use this option to unfollow those who are not following back")
 	flag.BoolVar(&nomail, "nomail", false, "Use this option to disable the email notifications")
 	flag.BoolVar(&dev, "dev", false, "Use this option to use the script in development mode : nothing will be done for real")
-	flag.BoolVar(&logs, "logs", false, "Use this option to enable the logfile")
 	flag.BoolVar(&noduplicate, "noduplicate", false, "Use this option to skip following, liking and commenting same user in this session")
 
 	flag.Parse()
 
-	// -logs enables the log file
-	if logs {
-		// Opens a log file
-		t := time.Now()
-		logFile, err := os.OpenFile("instabot-"+t.Format("2006-01-02-15-04-05")+".log", os.O_CREATE|os.O_APPEND|os.O_RDWR, 0666)
-		check(err)
-		defer logFile.Close()
+	/*
+		// -logs enables the log file
+		if logs {
 
-		// Duplicates the writer to stdout and logFile
-		mw := io.MultiWriter(os.Stdout, logFile)
-		log.SetOutput(mw)
+				// Opens a log file
+				t := time.Now()
+				logFile, err := os.OpenFile("instabot-"+t.Format("2006-01-02-15-04-05")+".log", os.O_CREATE|os.O_APPEND|os.O_RDWR, 0666)
+				check(err)
+				defer logFile.Close()
+
+				// Duplicates the writer to stdout and logFile
+				mw := io.MultiWriter(os.Stdout, logFile)
+				log.SetOutput(mw)
+
+			InitLogger()
+		}
+
+	*/
+
+	InitLogger()
+
+	opts := Flags{
+		Run:      run,
+		Unfollow: unfollow,
+		Nomail:   nomail,
+		Dev:      dev,
+		Nodups:   noduplicate,
 	}
+	slogger.Infow("Flags parsed", "flags", opts)
+	return opts
 }
 
-// Gets the conf in the config file
-func getConfig() {
+/*
+// Reads the conf in the config file
+func ReadConfig() {
 	folder := "config"
 	if dev {
 		folder = "local"
@@ -120,7 +232,7 @@ func getConfig() {
 		log.Fatalf("Error reading config file, %s", err)
 	}
 
-	// Check enviroment
+	// Check environment
 	viper.SetEnvPrefix("instabot")
 	replacer := strings.NewReplacer(".", "_")
 	viper.SetEnvKeyReplacer(replacer)
@@ -129,28 +241,27 @@ func getConfig() {
 	// Confirms which config file is used
 	log.Printf("Using config: %s\n\n", viper.ConfigFileUsed())
 
-	likeLowerLimit = viper.GetInt("limits.like.min")
-	likeUpperLimit = viper.GetInt("limits.like.max")
 
-	followLowerLimit = viper.GetInt("limits.follow.min")
-	followUpperLimit = viper.GetInt("limits.follow.max")
+	likeMin = viper.GetInt("limits.like.min")
+	likeMax = viper.GetInt("limits.like.max")
 
-	commentLowerLimit = viper.GetInt("limits.comment.min")
-	commentUpperLimit = viper.GetInt("limits.comment.max")
+	followMin = viper.GetInt("limits.follow.min")
+	followMax = viper.GetInt("limits.follow.max")
 
-	tagsList = viper.GetStringMap("tags")
+	commentMin = viper.GetInt("limits.comment.min")
+	commentMax = viper.GetInt("limits.comment.max")
 
-	commentsList = viper.GetStringSlice("comments")
+	tags = viper.GetStringMap("tags")
+
+	comments = viper.GetStringSlice("comments")
 
 	userBlacklist = viper.GetStringSlice("blacklist")
 	userWhitelist = viper.GetStringSlice("whitelist")
 
-	type Report struct {
-		Tag, Action string
-	}
-
 	report = make(map[line]int)
 }
+
+
 
 // Sends an email. Check out the "mail" section of the "config.json" file.
 func send(body string, success bool) {
@@ -183,6 +294,8 @@ func send(body string, success bool) {
 	}
 }
 
+*/
+
 // Retries the same function [function], a certain number of times (maxAttempts).
 // It is exponential : the 1st time it will be (sleep), the 2nd time, (sleep) x 2, the 3rd time, (sleep) x 3, etc.
 // If this function fails to recover after an error, it will send an email to the address in the config file.
@@ -195,13 +308,14 @@ func retry(maxAttempts int, sleep time.Duration, function func() error) (err err
 		for i := 0; i <= currentAttempt; i++ {
 			time.Sleep(sleep)
 		}
-		log.Println("Retrying after error:", err)
+		slogger.Errorw("Retrying after error:", "error", err)
 	}
 
-	send(fmt.Sprintf("The script has stopped due to an unrecoverable error :\n%s", err), false)
+	//send(fmt.Sprintf("The script has stopped due to an unrecoverable error :\n%s", err), false)
 	return fmt.Errorf("After %d attempts, last error: %s", maxAttempts, err)
 }
 
+/*
 // Builds the line for the report and prints it
 func buildLine() {
 	reportTag := ""
@@ -237,5 +351,43 @@ func buildReport() {
 	fmt.Println(reportAsString)
 
 	// Sends the report to the email in the config file, if the option is enabled
-	send(reportAsString, true)
+	//send(reportAsString, true)
+}
+
+*/
+
+func getInput(text string) string {
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Printf(text)
+	input, err := reader.ReadString('\n')
+	check(err)
+	return strings.TrimSpace(input)
+}
+
+// Checks if the user is in the slice
+func containsUser(slice []goinsta.User, user goinsta.User) bool {
+	for _, currentUser := range slice {
+		if currentUser.Username == user.Username {
+			return true
+		}
+	}
+	return false
+}
+
+func getInputf(format string, args ...interface{}) string {
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Printf(format, args...)
+	input, err := reader.ReadString('\n')
+	check(err)
+	return strings.TrimSpace(input)
+}
+
+// Same, with strings
+func containsString(slice []string, user string) bool {
+	for _, currentUser := range slice {
+		if currentUser == user {
+			return true
+		}
+	}
+	return false
 }

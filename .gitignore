@@ -10,7 +10,7 @@ key
 # old
 session
 # new
-goinsta-session
+instabot-session
 
 # Log files
 *.log
@@ -26,3 +26,9 @@ goinsta-session
 
 # Vendor folder
 vendor/
+
+# .idea project files
+.idea/
+
+# local build folder to be ignored
+build
